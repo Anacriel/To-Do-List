@@ -1,5 +1,3 @@
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Date
 from hstest.check_result import CheckResult
 from hstest.stage_test import StageTest
 from hstest.test_case import TestCase
@@ -8,8 +6,9 @@ from typing import List
 import os
 import shutil
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+
+from DbTool import DbTool
+
 
 menu = """
 1) Today's tasks
@@ -294,31 +293,13 @@ class ToDoList(StageTest):
             return CheckResult.wrong('Your program doesn\'t read all inputs!')
 
     def execute(self, query: str):
-        db = DbTool('main.db')
+        db = DbTool('todo.db')
         try:
             result = db.session.execute(query).fetchall()
         except Exception:
             result = None
         db.session.close()
         return result
-
-
-class DbTool:
-
-    def __init__(self, file):
-        self.engine = create_engine('sqlite:///todo.db?check_same_thread=false')
-        self.session = sessionmaker(bind=self.engine)()
-
-    def close(self):
-        self.session.close()
-
-    Base = declarative_base()
-
-    class Task(Base):
-        __tablename__ = 'task'
-        id = Column(Integer, primary_key=True)
-        task = Column(String)
-        deadline = Column(Date)
 
 
 if __name__ == '__main__':

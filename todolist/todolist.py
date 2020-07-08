@@ -1,100 +1,109 @@
-from datetime import datetime, timedelta
-
-from sqlalchemy import create_engine, Column, Integer, String, Date
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-
-
-Base = declarative_base()
-
-
-class Table(Base):
-    __tablename__ = 'task'
-    id = Column(Integer, primary_key=True)
-    task = Column(String)
-    deadline = Column(Date, default=datetime.today())
-
-    def __repr__(self):
-        return self.task
+from datetime import datetime as dt
+from datetime import timedelta
+from DbTool import DbTool
 
 
 class Menu:
     n_menus = 0
+    db = DbTool("todo.db")
+    menu = """
+1) Today's tasks
+2) Week's tasks
+3) All tasks
+4) Missed tasks
+5) Add task
+6) Delete task
+0) Exit
+""".strip()
 
-    def __new__(cls, engine):
+    def __new__(cls):
         if cls.n_menus == 0:
             cls.n_menus += 1
             return object.__new__(cls)
 
-    def __init__(self, engine):
-        Session = sessionmaker(bind=engine)
-        self.session = Session()
-
-    @staticmethod
-    def print_menu():
-        print(f"1) Today's tasks\n"
-              "2) Week's tasks\n"
-              "3) All tasks\n"
-              "4) Missed tasks\n"
-              "5) Add task\n"
-              "6) Delete task\n"
-              "0) Exit")
-
     @staticmethod
     def print_tasks(tasks, message, print_date=False):
+        """
+        Print a list of tasks
+
+        :param list tasks: result of a database query
+        :param str message: message to print if out of tasks
+        :param bool print_date: to print date of the task or not
+        """
         if not tasks:
             print(message)
             return
 
         if print_date:
             for i, task in enumerate(tasks):
-                print(f"{i + 1}. {task.task}. {task.deadline.strftime('%d %b')}")
+                print(f"{i+1}. {task.task}. {task.deadline.strftime('%d %b')}")
         else:
             for i, task in enumerate(tasks):
-                print(f"{i + 1}. {task.task}")
+                print(f"{i+1}. {task.task}")
 
         print()
 
-    def show_tasks_for_period(self, message, since=datetime.today().date(), days=8):
+    def print_menu(self):
+        """
+        Prints To-Do list menu
+        """
+        print(self.menu)
+
+    def show_tasks_for_period(self, message, since=dt.today().date(), days=8):
+        """
+        Get tasks from database and print them for a specified period
+
+        :param str message: message to print if out of tasks
+        :param datetime.date since: day to print since
+        :param int days: period for printing
+        """
         day = since
         for _ in range(days):
-            rows = self.session \
-                .query(Table) \
-                .filter(Table.deadline == day) \
+            rows = (
+                self.db.session.query(self.db.Task)
+                .filter(self.db.Task.deadline == day)
                 .all()
+            )
             date = day.strftime("%A %d %b") + ":"
             print("\n" + date)
             self.print_tasks(rows, message)
             day += timedelta(days=1)
 
     def get_timetable(self, kind="Today"):
+        """
+        Get tasks from database and print them
+
+        :param str kind: keyword specifying printing result
+        """
         rows = None
-        message, message_empty = '', 'Nothing to do!'
+        message, message_empty = "", "Nothing to do!"
         print_date = False
         if kind == "Week":
             self.show_tasks_for_period(days=8, message=message_empty)
             return
 
         elif kind == "Today":
-            today_day = datetime.today().date()
-            rows = self.session \
-                       .query(Table) \
-                       .filter(Table.deadline == today_day) \
-                       .all()
+            today_day = dt.today().date()
+            rows = (
+                self.db.session.query(self.db.Task)
+                .filter(self.db.Task.deadline == today_day)
+                .all()
+            )
             message = "Today " + today_day.strftime("%d %b") + ":"
 
         elif kind == "All":
-            rows = self.session.query(Table).all()
+            rows = self.db.session.query(self.db.Task).all()
             message = "All tasks:"
             print_date = True
 
         elif kind == "Missed":
-            today_day = datetime.today().date()
-            rows = self.session \
-                       .query(Table) \
-                       .filter(Table.deadline < today_day) \
-                       .order_by(Table.deadline) \
-                       .all()
+            today_day = dt.today().date()
+            rows = (
+                self.db.session.query(self.db.Task)
+                .filter(self.db.Task.deadline < today_day)
+                .order_by(self.db.Task.deadline)
+                .all()
+            )
             message = "Missed tasks:"
             message_empty = "Nothing is missed!"
             print_date = True
@@ -103,16 +112,30 @@ class Menu:
         self.print_tasks(rows, message=message_empty, print_date=print_date)
 
     def add_task(self, task, deadline):
-        new_row = Table(task=task, deadline=deadline)
-        self.session.add(new_row)
-        self.session.commit()
+        """
+        Add new task to database
+
+        :param str task: the task to add
+        :param datetime.date deadline: deadline for the task
+        """
+        new_row = self.db.Task(task=task, deadline=deadline)
+        self.db.session.add(new_row)
+        self.db.session.commit()
 
     def delete_task(self, task_ind):
-        task_to_delete = self.session.query(Table).all()[task_ind - 1]
-        self.session.delete(task_to_delete)
-        self.session.commit()
+        """
+        Delete task from database
+
+        :param int task_ind: index of the task in the list of tasks to delete
+        """
+        task_to_delete = self.db.session.query(self.db.Task).all()[task_ind - 1]
+        self.db.session.delete(task_to_delete)
+        self.db.session.commit()
 
     def run(self):
+        """
+        Run printing menu and input processing
+        """
         periods = {1: "Today", 2: "Week", 3: "All", 4: "Missed"}
         while True:
             self.print_menu()
@@ -121,10 +144,8 @@ class Menu:
                 self.get_timetable(periods[action])
 
             elif action == 5:
-                print("\nEnter task")
-                task = input()
-                print("Enter deadline")
-                deadline = datetime.strptime(input(), "%Y-%m-%d")
+                task = input("\nEnter task\n")
+                deadline = dt.strptime(input("Enter deadline\n"), "%Y-%m-%d")
                 self.add_task(task, deadline)
                 print("The task has been added!\n")
 
@@ -140,11 +161,10 @@ class Menu:
                 break
 
             else:
+                print("Entered command is not defined!")
                 break
 
 
-engine = create_engine('sqlite:///todo.db?check_same_thread=False')
-Base.metadata.create_all(engine)
-
-menu = Menu(engine)
-menu.run()
+if __name__ == "__main__":
+    menu = Menu()
+    menu.run()
